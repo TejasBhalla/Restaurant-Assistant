@@ -1,0 +1,47 @@
+[
+  {
+    "id": 1,
+    "name": "Classic Burger",
+    "category": "Burger",
+    "description": "Juicy grilled beef burger with cheese",
+    "price": 199,
+    "available": true,
+    "image": "/images/burger.jpg"
+  },
+  {
+    "id": 2,
+    "name": "Veggie Burger",
+    "category": "Burger",
+    "description": "Fresh vegetable patty with lettuce",
+    "price": 179,
+    "available": true,
+    "image": "/images/veggie.jpg"
+  },
+  {
+    "id": 3,
+    "name": "French Fries",
+    "category": "Fries",
+    "description": "Golden crispy fries",
+    "price": 99,
+    "available": true,
+    "image": "/images/fries.jpg"
+  },
+  {
+    "id": 4,
+    "name": "Coke",
+    "category": "Drinks",
+    "description": "330ml chilled coke",
+    "price": 59,
+    "available": true,
+    "image": "/images/coke.jpg"
+  },
+  {
+    "id": 5,
+    "name": "Chocolate Brownie",
+    "category": "Dessert",
+    "description": "Warm brownie with chocolate sauce",
+    "price": 149,
+    "available": true,
+    "image": "/images/brownie.jpg"
+  }
+]
