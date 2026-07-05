@@ -5,6 +5,7 @@ import json
 from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from google.genai.live import ConnectionClosed
 from app.config.settings import settings
 from app.services.tool_dispatcher import tool_dispatcher
 
@@ -158,14 +159,10 @@ async def receive_from_browser(websocket: WebSocket, session, types_module: Any)
             # Handle incoming binary audio chunks from browser
             audio = message.get("bytes")
             if audio:
-                await session.send(
-                    input=types_module.LiveClientRealtimeInput(
-                        media_chunks=[
-                            types_module.Blob(
-                                data=audio,
-                                mime_type="audio/pcm;rate=16000",
-                            )
-                        ]
+                await session.send_realtime_input(
+                    media=types_module.Blob(
+                        data=audio,
+                        mime_type="audio/pcm;rate=16000",
                     )
                 )
             
@@ -178,10 +175,8 @@ async def receive_from_browser(websocket: WebSocket, session, types_module: Any)
                     data = {"type": "text", "text": text_payload}
 
                 if data.get("type") == "text" and data.get("text"):
-                    await session.send(
-                        input=types_module.LiveClientRealtimeInput(
-                            text=data["text"]
-                        )
+                    await session.send_realtime_input(
+                        text=data["text"]
                     )
     except asyncio.CancelledError:
         pass
@@ -193,17 +188,17 @@ async def send_to_browser(websocket: WebSocket, session, types_module: Any):
     Gemini -> Browser
     """
     try:
-        async for response in session.receive():
-            # Handle tool calls at the top level
-            tool_call = getattr(response, "tool_call", None)
-            if tool_call:
-                function_calls = getattr(tool_call, "function_calls") or []
-                for fc in function_calls:
-                    func_name = fc.name
-                    func_args = dict(fc.args) if fc.args else {}
-                    result = tool_dispatcher.execute(func_name, func_args)
-                    await session.send(
-                        input=types_module.LiveClientToolResponse(
+        while True:
+            async for response in session.receive():
+                # Handle tool calls at the top level
+                tool_call = getattr(response, "tool_call", None)
+                if tool_call:
+                    function_calls = getattr(tool_call, "function_calls") or []
+                    for fc in function_calls:
+                        func_name = fc.name
+                        func_args = dict(fc.args) if fc.args else {}
+                        result = tool_dispatcher.execute(func_name, func_args)
+                        await session.send_tool_response(
                             function_responses=[
                                 types_module.FunctionResponse(
                                     name=func_name,
@@ -212,45 +207,43 @@ async def send_to_browser(websocket: WebSocket, session, types_module: Any):
                                 )
                             ]
                         )
-                    )
-                continue
+                    continue
 
-            server_content = getattr(response, "server_content", None)
-            if server_content is None:
-                continue
+                server_content = getattr(response, "server_content", None)
+                if server_content is None:
+                    continue
 
-            model_turn = getattr(server_content, "model_turn", None)
-            if model_turn:
-                for part in getattr(model_turn, "parts", []):
-                    # Handle Text/Transcript Chunks
-                    text = getattr(part, "text", None)
-                    if text:
-                        await websocket.send_json(
-                            {
-                                "type": "text",
-                                "text": text,
-                            }
-                        )
+                model_turn = getattr(server_content, "model_turn", None)
+                if model_turn:
+                    for part in getattr(model_turn, "parts", []):
+                        # Handle Text/Transcript Chunks
+                        text = getattr(part, "text", None)
+                        if text:
+                            await websocket.send_json(
+                                {
+                                    "type": "text",
+                                    "text": text,
+                                }
+                            )
 
-                    # Handle Audio Output Chunks
-                    inline_data: Any = getattr(part, "inline_data", None)
-                    if inline_data and getattr(inline_data, "data", None):
-                        await websocket.send_json(
-                            {
-                                "type": "audio",
-                                "mime_type": getattr(inline_data, "mime_type", "audio/pcm;rate=24000"),
-                                "data": base64.b64encode(inline_data.data).decode("ascii"),
-                            }
-                        )
+                        # Handle Audio Output Chunks
+                        inline_data: Any = getattr(part, "inline_data", None)
+                        if inline_data and getattr(inline_data, "data", None):
+                            await websocket.send_json(
+                                {
+                                    "type": "audio",
+                                    "mime_type": getattr(inline_data, "mime_type", "audio/pcm;rate=24000"),
+                                    "data": base64.b64encode(inline_data.data).decode("ascii"),
+                                }
+                            )
 
-                    # Handle Tool Calls nested in parts
-                    function_call = getattr(part, "function_call", None)
-                    if function_call:
-                        func_name = function_call.name
-                        func_args = dict(function_call.args) if function_call.args else {}
-                        result = tool_dispatcher.execute(func_name, func_args)
-                        await session.send(
-                            input=types_module.LiveClientToolResponse(
+                        # Handle Tool Calls nested in parts
+                        function_call = getattr(part, "function_call", None)
+                        if function_call:
+                            func_name = function_call.name
+                            func_args = dict(function_call.args) if function_call.args else {}
+                            result = tool_dispatcher.execute(func_name, func_args)
+                            await session.send_tool_response(
                                 function_responses=[
                                     types_module.FunctionResponse(
                                         name=func_name,
@@ -259,13 +252,14 @@ async def send_to_browser(websocket: WebSocket, session, types_module: Any):
                                     )
                                 ]
                             )
-                        )
 
-            # Handle turn completion signals
-            if getattr(server_content, "turn_complete", False):
-                await websocket.send_json({"type": "turn_complete"})
+                # Handle turn completion signals
+                if getattr(server_content, "turn_complete", False):
+                    await websocket.send_json({"type": "turn_complete"})
 
     except asyncio.CancelledError:
+        pass
+    except ConnectionClosed:
         pass
     except Exception as e:
         print(f"Error in send_to_browser: {e}")
@@ -285,13 +279,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 send_to_browser(websocket, session, types_module)
             )
             
-            done, pending = await asyncio.wait(
-                [receive_task, send_task],
-                return_when=asyncio.FIRST_COMPLETED,
-            )
-            
-            for task in pending:
-                task.cancel()
+            await asyncio.gather(receive_task, send_task)
 
     except RuntimeError as e:
         await websocket.send_json({"type": "error", "text": str(e)})
