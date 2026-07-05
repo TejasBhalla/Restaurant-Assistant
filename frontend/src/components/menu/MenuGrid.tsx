@@ -19,12 +19,7 @@ export function MenuGrid() {
   }, [])
 
   const handleAdd = (item: MenuItem) => {
-    addItem({
-      id: item.id,
-      name: item.name,
-      quantity: 1,
-      price: item.price,
-    })
+    addItem({ id: item.id, name: item.name, price: item.price }, 1)
   }
 
   if (loading) {

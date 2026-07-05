@@ -127,16 +127,16 @@ def create_live_client_and_config():
                     ),
                     types.FunctionDeclaration(
                         name="checkout",
-                        description="Complete the order and checkout",
+                        description="Complete the order (call this when user says they want to checkout / place order / pay)",
                         parameters=types.Schema(
                             type=types.Type.OBJECT,
                             properties={
-                                "cart": types.Schema(
-                                    type=types.Type.OBJECT,
-                                    description="The cart data",
+                                "customer_name": types.Schema(
+                                    type=types.Type.STRING,
+                                    description="Name of the customer placing the order",
                                 ),
                             },
-                            required=["cart"],
+                            required=["customer_name"],
                         ),
                     ),
                 ],
@@ -198,6 +198,13 @@ async def send_to_browser(websocket: WebSocket, session, types_module: Any):
                         func_name = fc.name
                         func_args = dict(fc.args) if fc.args else {}
                         result = tool_dispatcher.execute(func_name, func_args)
+                        await websocket.send_json(
+                            {
+                                "type": "tool_result",
+                                "tool": func_name,
+                                "result": result,
+                            }
+                        )
                         await session.send_tool_response(
                             function_responses=[
                                 types_module.FunctionResponse(
@@ -243,6 +250,13 @@ async def send_to_browser(websocket: WebSocket, session, types_module: Any):
                             func_name = function_call.name
                             func_args = dict(function_call.args) if function_call.args else {}
                             result = tool_dispatcher.execute(func_name, func_args)
+                            await websocket.send_json(
+                                {
+                                    "type": "tool_result",
+                                    "tool": func_name,
+                                    "result": result,
+                                }
+                            )
                             await session.send_tool_response(
                                 function_responses=[
                                     types_module.FunctionResponse(

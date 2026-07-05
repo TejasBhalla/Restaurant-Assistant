@@ -4,6 +4,8 @@ import { useEffect } from "react"
 import { wsService } from "@/services/websocket"
 import { useChatStore } from "@/stores/chatStore"
 import { useVoiceStore } from "@/stores/voiceStore"
+import { useCartStore } from "@/stores/cartStore"
+import { submitCheckout } from "@/services/api"
 
 function parseSampleRate(mimeType?: string) {
   const match = mimeType?.match(/rate=(\d+)/)
@@ -90,6 +92,33 @@ export function useWebSocket() {
             setSpeaking(false)
           } else if (json.type === "error") {
             addMessage({ role: "system", text: json.text })
+          } else if (json.type === "tool_result") {
+            const cartStore = useCartStore.getState()
+            switch (json.tool) {
+              case "add_to_cart":
+                cartStore.addItem(json.result.item, json.result.quantity)
+                addMessage({
+                  role: "system",
+                  text: `Added ${json.result.quantity}x ${json.result.item.name} to cart`,
+                })
+                break
+              case "remove_item":
+                cartStore.removeItem(json.result.item.id)
+                break
+              case "update_quantity":
+                cartStore.updateQuantity(json.result.item.id, json.result.quantity)
+                break
+              case "checkout":
+                const { items, subtotal, tax, total, clearCart } = useCartStore.getState()
+                submitCheckout({
+                  customer_name: json.result.customer_name,
+                  items: items.map(({ id, name, quantity, price }) => ({ id, name, quantity, price })),
+                }).then(() => {
+                  clearCart()
+                  window.location.href = "/success"
+                })
+                break
+            }
           }
         } catch {
           addMessage({ role: "assistant", text: data })

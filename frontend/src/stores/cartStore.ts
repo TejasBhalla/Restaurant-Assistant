@@ -6,7 +6,7 @@ interface CartStore {
   subtotal: number
   tax: number
   total: number
-  addItem: (item: CartItem) => void
+  addItem: (item: { id: number; name: string; price: number }, quantity: number) => void
   removeItem: (itemId: number) => void
   updateQuantity: (itemId: number, quantity: number) => void
   clearCart: () => void
@@ -19,14 +19,14 @@ export const useCartStore = create<CartStore>((set, get) => ({
   tax: 0,
   total: 0,
 
-  addItem: (item) => {
+  addItem: (item, quantity) => {
     const items = get().items
     const existing = items.find((i) => i.id === item.id)
     if (existing) {
-      existing.quantity += item.quantity
+      existing.quantity += quantity
       set({ items: [...items] })
     } else {
-      set({ items: [...items, item] })
+      set({ items: [...items, { ...item, quantity }] })
     }
     get().recalculate()
   },
